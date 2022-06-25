@@ -29,14 +29,18 @@ class cheb_poly_gcn(nn.Module):
         self.K = K
         c_in_new = (K) * c_in  # k切比雪夫系数，c_in 输入特征个数
         self.conv1 = torch.nn.Conv2d(c_in_new, c_out, kernel_size=(1, 1), stride=(1, 1), bias=False)
-
+        # print('c_in',c_in)   64
+        # print('c_out', c_out)   128
+        # print('K',K)  3
+        # print('Kt',Kt)  3
     def forward(self, x, La):
         x = x.permute(0, 1, 3, 2).contiguous()
         nSample, feat_in, nNode, length = x.shape
         Ls = []
         L1 = La
-        L0 = torch.eye(nNode).repeat(nSample, 1, 1).cuda()
-        # 3rd order Chebyshev
+        L0 = torch.eye(nNode).repeat(nSample, 1, 1).cuda()  # 单位矩阵
+        # torch.eye 为了生成nNode个对角线全1，其余部分全0的二维数组
+        # .repeat()把原始torch位置的数据与repeat对应位置相乘，多出来的维度写在前面
         Ls.append(L0)
         Ls.append(L1)
         for k in range(2, self.K):
@@ -44,13 +48,15 @@ class cheb_poly_gcn(nn.Module):
             L0, L1 = L1, L2
             Ls.append(L2)
         Lap = torch.stack(Ls, 1)  # [B, K,nNode, nNode]
+        # torch.stack 把Ls的维度再增加一个维度，如三维变四维
+        # print(Lap)
         Lap = Lap.transpose(-1, -2)
         x = torch.einsum('bcnl,bknq->bckql', x, Lap).contiguous()
         x = x.view(nSample, -1, nNode, length)
         out = self.conv1(x)
         out = out.permute(0, 1, 3, 2).contiguous()
         return out
-# attentional mechanisms
+
 class TATT_1(nn.Module):
     def __init__(self, c_in, num_nodes, tem_size):
         super(TATT_1, self).__init__()
@@ -88,7 +94,7 @@ class TATT_1(nn.Module):
         x_1 = x_1.permute(0, 1, 3, 2).contiguous()
         return x_1
 
-# Adaptive graph generation
+
 class unit_gcn(nn.Module):
     def __init__(self, in_channels, out_channels, A, coff_embedding=4, num_subset=3, days=50, dims=32, num_nodes=307):
         super(unit_gcn, self).__init__()
@@ -117,11 +123,11 @@ class unit_gcn(nn.Module):
     def forward(self, x):
 
         N, C, T, V = x.size()  # ([50, 1, 12, 307])
-        # Ls short-time
+        # Ls
         A1 = self.conv_a(x).permute(0, 3, 1, 2).contiguous().view(N, V, self.inter_c * T)
         A2 = self.conv_a(x).view(N, self.inter_c * T, V)
         A3 = self.soft(torch.matmul(A1, A2)) #* A1.size(-2) # N V V  50 228 228   *10 / A1.size(-2) / A1.size(-2)
-        # Ll long-time
+        #Ll
         adp = self.dgconstruct(self.nodevec_p1, self.nodevec_p2, self.nodevec_p3, self.nodevec_pk)
         # Lap
         A4 = A3 + adp
@@ -215,7 +221,7 @@ class STAGCN(nn.Module):
         self.adj = adj
 
         self.TATT_1 = TATT_1(c_in=1, num_nodes=n, tem_size=12)
-        self.adaptivegcn = unit_gcn(in_channels=1, out_channels=64, A=adj, days=50, dims=36, num_nodes=n)
+        self.adaptivegcn = unit_gcn(in_channels=1, out_channels=64, A=adj, days=50, dims=16, num_nodes=n)
         self.st_conv1 = st_conv_block(ks, kt, n, bs[0], p)
         self.st_conv2 = st_conv_block(ks, kt, n, bs[1], p)
         self.output = output_layer(bs[1][2], kt, n, T, out)
