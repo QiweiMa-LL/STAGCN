@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import random
 from stagcn import STAGCN
-from utils import generate_dataset,  load_metr_la_data4, load_metr_la_data8
+from utils import generate_dataset,  load_metr_la_data2, load_metr_la_data8
 from libs.metrics import RMSE, masked_mape_np, MAE
 
 use_gpu = True
@@ -20,12 +20,13 @@ n_days = 288
 num_timesteps_input = 12
 num_timesteps_output = 12
 
-epochs = 3
+epochs = 70
 batch_size = 50
 
-parser = argparse.ArgumentParser(description='STGCN')
+parser = argparse.ArgumentParser(description='STAGCN')
 parser.add_argument('--enable-cuda', action='store_true',
                     help='Enable CUDA')
+parser.add_argument('--filename', type=str, default='pems08')
 args = parser.parse_args()
 args.device = None
 if torch.cuda.is_available():
@@ -61,10 +62,10 @@ def train_epoch(training_input, training_target, batch_size):
 
 if __name__ == '__main__':
     # set random factor
-    torch.manual_seed(7)
-    torch.cuda.manual_seed(7)
-    np.random.seed(7)
-    random.seed(7)
+    torch.manual_seed(66)
+    torch.cuda.manual_seed(66)
+    np.random.seed(66)
+    random.seed(66)
     A, X, means, stds = load_metr_la_data8()
     # segmentation data
     n_route = X.shape[0]
@@ -96,6 +97,10 @@ if __name__ == '__main__':
     testidation_maes = []
     testidation_mape = []
     testidation_rmse = []
+    testmape=np.zeros(12)
+    testmae = np.zeros(12)
+    testrmse = np.zeros(12)
+    best_val_rmse = 1000
 
     for epoch in range(epochs):
         loss = train_epoch(training_input, training_target,
@@ -132,67 +137,75 @@ if __name__ == '__main__':
                     loss2.detach().cpu().numpy())
             val_loss = sum(epoch_val_losses) / len(epoch_val_losses)
             validation_losses.append(val_loss)
+            val_target_out = val_target[val_last]
+            val_out_unnormalized = out_val.detach().cpu().numpy() * stds[0] + means[0]
+            val_target_unnormalized = val_target_out.detach().cpu().numpy() * stds[0] + means[0]
 
-            # start test
-            test_input = test_input.to(device=args.device)
-            test_target = test_target.to(device=args.device)
-            # no disruption of data order
-            permutation = torch.arange(0, test_input.shape[0])
-            test_last = permutation[0:int(test_input.shape[0] / 50) * 50]
-            epoch_test_losses = []
-            # out_test = []
-            for i in range(0, test_input.shape[0] - batch_size + 1, batch_size):
-                indices = permutation[i:i + batch_size]
+            val_rmse = MAE(val_target_unnormalized, val_out_unnormalized)
 
-                test_input_batch, test_target_batch = test_input[indices], test_target[indices]
-                test_input_batch = test_input_batch.to(device=args.device)
-                test_target_batch = test_target_batch.to(device=args.device)
-                out = net(test_input_batch)
-                # save the results to out_val
-                if i == 0:
-                    out_last = out
-                elif i > 0:
-                    out_test = torch.cat((out_last, out), 0)
-                    out_last = out_test
-
-                # calculate loss value
-                loss2 = loss_criterion(out, test_target_batch).to(device='cuda')
-                epoch_test_losses.append(
-                    loss2.detach().cpu().numpy())  # loss不仅有损失值还有其它一些信息，loss.detach().cpu().numpy()是只取损失值
-            test_loss = sum(epoch_test_losses) / len(epoch_test_losses)
-            testidation_losses.append(test_loss)
-            test_target_out = test_target[test_last]
-            # evaluation test effect
-            out_unnormalized = out_test.detach().cpu().numpy() * stds[0] + means[0]
-            target_unnormalized = test_target_out.detach().cpu().numpy() * stds[0] + means[0]
-            mae = MAE(out_unnormalized, target_unnormalized)
-            testidation_maes.append(mae)
-
-            mape = masked_mape_np(out_unnormalized, target_unnormalized, 0)
-            testidation_mape.append(mape)
-
-            rmse = RMSE(out_unnormalized, target_unnormalized)
-            testidation_rmse.append(rmse)
+            if val_rmse < best_val_rmse:
+                best_val_rmse = val_rmse
+                print('New best results!')
+                torch.save(net.state_dict(), f'net_params_{args.filename}.pkl')
             out = None
-            test_input = test_input.to(device=args.device)
-            test_target = test_target.to(device=args.device)
-
             val_input = val_input.to(device=args.device)
             val_target = val_target.to(device=args.device)
 
         print("Training loss: {}".format(training_losses[-1]))
         print("Validation loss: {}".format(validation_losses[-1]))
-        print("Testidation loss: {}".format(testidation_losses[-1]))
-        print("Testidation MAE: {}".format(testidation_maes[-1]))
-        print("Testidation MAPE: {}".format(testidation_mape[-1]))
-        print("Testidation RSME: {}".format(testidation_rmse[-1]))
-        print("Testidation MAEmean: {}".format(np.mean(testidation_maes)))
-        print("Testidation MAPEmean: {}".format(np.mean(testidation_mape)))
-        print("Testidation RSMEmean: {}".format(np.mean(testidation_rmse)))
+    # start test
+    with torch.no_grad():
+     net.load_state_dict(torch.load(f'net_params_{args.filename}.pkl'))
+     net.eval()
+     test_input = test_input.to(device=args.device)
+     test_target = test_target.to(device=args.device)
+     # no disruption of data order
+     permutation = torch.arange(0, test_input.shape[0])
+     test_last = permutation[0:int(test_input.shape[0] / 50) * 50]
+     epoch_test_losses = []
+     # out_test = []
 
-        checkpoint_path = "checkpoints/"
-        if not os.path.exists(checkpoint_path):
-            os.makedirs(checkpoint_path)
-        with open("checkpoints/losses.pk", "wb") as fd:
-            pk.dump((training_losses, validation_losses, testidation_losses, testidation_maes, testidation_mape,
-                     testidation_rmse), fd)
+     for i in range(0, test_input.shape[0] - batch_size + 1, batch_size):
+         indices = permutation[i:i + batch_size]
+
+         test_input_batch, test_target_batch = test_input[indices], test_target[indices]
+         test_input_batch = test_input_batch.to(device=args.device)
+         test_target_batch = test_target_batch.to(device=args.device)
+
+         out = net(test_input_batch)
+         # save the results to out_val
+         if i == 0:
+             out_last = out
+         elif i > 0:
+             out_test = torch.cat((out_last, out), 0)
+             out_last = out_test
+
+         # calculate loss value
+         loss2 = loss_criterion(out, test_target_batch).to(device='cuda')
+         epoch_test_losses.append(
+             loss2.detach().cpu().numpy())  # loss不仅有损失值还有其它一些信息，loss.detach().cpu().numpy()是只取损失值
+     test_loss = sum(epoch_test_losses) / len(epoch_test_losses)
+     testidation_losses.append(test_loss)
+
+     test_target_out = test_target[test_last]
+
+     # evaluation test effect
+     out_unnormalized = out_test.detach().cpu().numpy() * stds[0] + means[0]
+     target_unnormalized = test_target_out.detach().cpu().numpy() * stds[0] + means[0]
+     mae = MAE(target_unnormalized, out_unnormalized)
+     testidation_maes.append(mae)
+
+     mape = masked_mape_np(target_unnormalized, out_unnormalized, 0)
+     testidation_mape.append(mape)
+
+     rmse = RMSE(target_unnormalized, out_unnormalized)
+     testidation_rmse.append(rmse)
+
+
+     out = None
+
+     print("Testidation loss: {}".format(testidation_losses[-1]))
+     print("Testidation MAE: {}".format(testidation_maes[-1]))
+     print("Testidation MAPE: {}".format(testidation_mape[-1]))
+     print("Testidation RSME: {}".format(testidation_rmse[-1]))
+
