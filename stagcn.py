@@ -9,7 +9,7 @@ import numpy as np
 from torch.autograd import Variable
 from scipy.sparse.linalg import eigs
 from matplotlib import pyplot as plt
-import seaborn as sns
+#import seaborn as sns
 
 class cheb_poly_gcn(nn.Module):
     '''
@@ -71,6 +71,7 @@ class TATT_1(nn.Module):
         self.b = nn.Parameter(torch.zeros(tem_size, tem_size), requires_grad=True)
         self.v = nn.Parameter(torch.rand(tem_size, tem_size), requires_grad=True)
         nn.init.xavier_uniform_(self.v)
+        # nn.init.xavier_uniform_(self.b)
         self.bn = nn.BatchNorm1d(tem_size)
 
     def forward(self, seq):
@@ -87,6 +88,7 @@ class TATT_1(nn.Module):
         logits = logits.permute(0, 2, 1).contiguous()
 
         logits = self.bn(logits).permute(0, 2, 1).contiguous()
+
         coefs = torch.softmax(logits, -1)
         T_coef = coefs.transpose(-1, -2)
         # print(T_coef.shape)  ([50, 12, 12])
@@ -100,7 +102,7 @@ class unit_gcn(nn.Module):
         super(unit_gcn, self).__init__()
         #  // "表示整数除法
         inter_channels = out_channels // coff_embedding  #16
-
+        inter_channels = 4
         self.inter_c = inter_channels
 
         self.nodevec_p1 = nn.Parameter(torch.randn(days, dims).to('cuda'), requires_grad=True).to('cuda')  #.to('cuda') torch.randn
@@ -187,6 +189,7 @@ class st_conv_block(nn.Module):
         x_t2 = self.tconv2(x_s)
         x_ln = self.ln(x_t2.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
         return self.dropout(x_ln)
+        # return x_ln
 
 class fully_conv_layer(nn.Module):
     def __init__(self, c):
@@ -221,7 +224,7 @@ class STAGCN(nn.Module):
         self.adj = adj
 
         self.TATT_1 = TATT_1(c_in=1, num_nodes=n, tem_size=12)
-        self.adaptivegcn = unit_gcn(in_channels=1, out_channels=64, A=adj, days=50, dims=16, num_nodes=n)
+        self.adaptivegcn = unit_gcn(in_channels=1, out_channels=64, A=adj, days=50, dims=12, num_nodes=n)
         self.st_conv1 = st_conv_block(ks, kt, n, bs[0], p)
         self.st_conv2 = st_conv_block(ks, kt, n, bs[1], p)
         self.output = output_layer(bs[1][2], kt, n, T, out)

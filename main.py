@@ -26,8 +26,9 @@ batch_size = 50
 parser = argparse.ArgumentParser(description='STAGCN')
 parser.add_argument('--enable-cuda', action='store_true',
                     help='Enable CUDA')
-parser.add_argument('--filename', type=str, default='pems08')
+parser.add_argument('--filename', type=str, default='pems0451e3')
 args = parser.parse_args()
+print('ma')
 args.device = None
 if torch.cuda.is_available():
     args.device = torch.device('cuda')
@@ -65,7 +66,7 @@ if __name__ == '__main__':
     torch.manual_seed(66)
     torch.cuda.manual_seed(66)
     np.random.seed(66)
-    random.seed(66)
+
     A, X, means, stds = load_metr_la_data8()
     # segmentation data
     n_route = X.shape[0]
@@ -88,7 +89,7 @@ if __name__ == '__main__':
 
     # initialization model
     net = STAGCN(Ks, Kt, blocks, num_timesteps_input, n_route, drop_prob, num_timesteps_output, training_input.shape[1], A, n_days).to(args.device)
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.5*1e-3)
     loss_criterion = nn.MSELoss()
 
     training_losses = []
@@ -101,7 +102,8 @@ if __name__ == '__main__':
     testmae = np.zeros(12)
     testrmse = np.zeros(12)
     best_val_rmse = 1000
-
+    start = 0
+    #if start == 1:
     for epoch in range(epochs):
         loss = train_epoch(training_input, training_target,
                            batch_size=batch_size)
@@ -109,6 +111,7 @@ if __name__ == '__main__':
 
         # Run validation
         with torch.no_grad():
+        # if start == 0:
             net.eval()
             # val
             val_input = val_input.to(device=args.device)
