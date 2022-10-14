@@ -39,7 +39,6 @@ class cheb_poly_gcn(nn.Module):
         Ls = []
         L1 = La
         L0 = torch.eye(nNode).repeat(nSample, 1, 1).cuda()  # 单位矩阵
-        # torch.eye 为了生成nNode个对角线全1，其余部分全0的二维数组
         # .repeat()把原始torch位置的数据与repeat对应位置相乘，多出来的维度写在前面
         Ls.append(L0)
         Ls.append(L1)
@@ -119,7 +118,7 @@ class unit_gcn(nn.Module):
         adp = torch.einsum('ai, ijk->ajk', time_embedding, core_embedding)
         adp = torch.einsum('bj, ajk->abk', source_embedding, adp)
         adp = torch.einsum('ck, abk->abc', target_embedding, adp)
-        adp = F.softmax(F.relu(adp), dim=-2)  # 我改了F.relu(adp)
+        adp = F.softmax(F.relu(adp), dim=-2)  
         return adp
 
     def forward(self, x):
@@ -232,7 +231,7 @@ class STAGCN(nn.Module):
     def forward(self, x):
         # attentional mechanisms
         x_1 = self.TATT_1(x[:, [0]])
-        Las = self.adaptivegcn(x[:, [1]])  # dynamic Laplacian matrix multiplication
+        Las = self.adaptivegcn(x[:, [1]])  
         x_st1 = self.st_conv1(x_1, Las)
         x_st2 = self.st_conv2(x_st1, Las)
         return self.output(x_st2)
