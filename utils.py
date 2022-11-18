@@ -33,7 +33,7 @@ def get_adjacency_matrix1(distance_df_filename, num_of_vertices):
 # processing PEMS04 data
 def load_metr_la_data4():
 
-    distance_df_filename = 'data/PEMS04/distance.csv'
+    distance_df_filename = '../data/PEMS04/distance.csv'
     num_of_vertices = 307
     A = get_adjacency_matrix1(distance_df_filename, num_of_vertices)
     X = np.load("data/PEMS04/pems04.npz")
@@ -53,7 +53,7 @@ def load_metr_la_data4():
 # processing PEMS08 data
 def load_metr_la_data8():
 
-    distance_df_filename = 'data/PEMS08/distance.csv'
+    distance_df_filename = '../data/PEMS08/distance.csv'
     num_of_vertices = 170
     A = get_adjacency_matrix1(distance_df_filename, num_of_vertices)
     X = np.load("data/PEMS08/pems08.npz")
